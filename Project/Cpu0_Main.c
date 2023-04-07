@@ -140,14 +140,22 @@ void usonicTrigger(void);
 void initCCU61(void);
 void initBuzzer(void);
 void initMotor(void);
+void RunMotor(int Direction);
+void activateBuzzer(int duty);
+void deactivateBuzzer(void);
+void GoMelody();
+
 unsigned int range;
 unsigned char range_valid_flag = 0;
 unsigned int flag = 0;
 unsigned int MotorStatus = 0;
-unsigned int count = 0;
+unsigned int MotorCount = 0;
 unsigned int MotorDirection = 0;
 
-void RunMotor(int Direction);
+unsigned int SongCount = 0;
+int Doremi[] = {130, 146, 164, 174, 195, 220, 246};
+int Melody[] = {4,4,5,5,4,4,3,  4,4,3,3,2,   4,4,5,5,4,4,3,   4,3,2,3,1};
+
 __interrupt(0x0A) __vector_table(0)
 void ERU0_ISR(void)
 {
@@ -181,7 +189,7 @@ void RunMotor(int Direction)
     unsigned int adcResult;
     VADC_startConversion();
     adcResult = VADC_readResult();
-    duty = 12500*adcResult/4096;
+    duty = 12500*adcResult/4096;  // 12bit 0~4096
 
     P02_OUT.U |= 0x1 << P1_BIT_LSB_IDX;
     if(Direction)
@@ -214,29 +222,21 @@ int core0_main(void)
 
     initLED();
     initButton();
-
     initMotor();
     initGTM();
-
-
-
     initRGBLED();
     initVADC();
-
     initBuzzer();
-
     initUSonic();
-
-
     initCCU60();
     initCCU61();
     initERU();
+
     // trigger update request signal
     GTM_TOM0_TGC0_GLB_CTRL.U |= 0x1 << HOST_TRIG_BIT_LSB_IDX;
     GTM_TOM0_TGC1_GLB_CTRL.U |= 0x1 << HOST_TRIG_BIT_LSB_IDX;
 
-    unsigned int pitch[8] = {250, 500, 1000, 1500, 195, 220, 246, 262};
-
+    int nMelodyCount = 0;
     while(1)
     {
         if(MotorStatus == MOTOR_STOP)
@@ -251,13 +251,13 @@ int core0_main(void)
         }
         else // MOTOR_RUN
         {
-            count++;
-            if(count >= 100)
+            MotorCount++;
+            if(MotorCount >= 100)
             {
                 MotorStatus = MOTOR_STOP;
                 P10_OUT.U &= ~(0x1 << P2_BIT_LSB_IDX); // 파란색 LED 끄기
                 GTM_TOM0_CH9_SR1.U = 0;
-                count = 0;
+                MotorCount = 0;
             }
         }
 
@@ -270,8 +270,9 @@ int core0_main(void)
             P10_OUT.U &= ~(0x1 << P5_BIT_LSB_IDX); // Green
             P10_OUT.U &= ~(0x1 << P3_BIT_LSB_IDX); // Blue
 
-           GTM_TOM0_CH11_SR0.B.SR0 = 0;//6250000 / pitch[0];
-           GTM_TOM0_CH11_SR1.B.SR1 = 0;//3125000 / pitch[0];
+            GTM_TOM0_CH11_SR0.B.SR0 = 0;
+            GTM_TOM0_CH11_SR1.B.SR1 = 0;
+            SongCount = 0;
 
         }
         else if (range >= 60)
@@ -279,24 +280,31 @@ int core0_main(void)
             P10_OUT.U |= (0x01) << P5_BIT_LSB_IDX; // Green On
             P10_OUT.U &= ~(0x1 << P3_BIT_LSB_IDX); // Blue
 
-            GTM_TOM0_CH11_SR0.B.SR0 = 6250000 / pitch[1];
-            GTM_TOM0_CH11_SR1.B.SR1 = 3125000 / pitch[1];
+            GTM_TOM0_CH11_SR0.B.SR0 = 0;
+            GTM_TOM0_CH11_SR1.B.SR1 = 0;
+            SongCount = 0;
+
         }
         else if (range >= 20)
         {
             P10_OUT.U &= ~(0x1 << P5_BIT_LSB_IDX); // Green
             P10_OUT.U |= (0x01) << P3_BIT_LSB_IDX; // Blue On
 
-            GTM_TOM0_CH11_SR0.B.SR0 = 6250000 / pitch[2];
-            GTM_TOM0_CH11_SR1.B.SR1 = 3125000 / pitch[2];
+            GTM_TOM0_CH11_SR0.B.SR0 = 0;
+            GTM_TOM0_CH11_SR1.B.SR1 = 0;
+            SongCount = 0;
         }
         else
         {
             P10_OUT.U |= (0x01) << P5_BIT_LSB_IDX; // Green On
             P10_OUT.U |= (0x01) << P3_BIT_LSB_IDX; // Blue On
 
-            GTM_TOM0_CH11_SR0.B.SR0 = 6250000 / pitch[3];
-            GTM_TOM0_CH11_SR1.B.SR1 = 3125000 / pitch[3];
+            nMelodyCount++;
+            if(nMelodyCount >= 20)
+            {
+                GoMelody();
+                nMelodyCount = 0;
+            }
         }
 
         // STOP 상태에서만 RUN으로 갈 수 있다.
@@ -519,7 +527,7 @@ void initCCU60(void){
     CCU60_TCTR0.U &= ~(0x1 << CTM_BIT_LSB_IDX); //T12 counter register (C/R) auto clear when Period Match (PM) occur
 
     CCU60_T12PR.U  = 125 -1; // PM interrupt freq. = f T12 / (T12PR + 1)
-//    CCU60_T12PR.U  = 24414 -1; // PM interrupt freq. = f T12 / (T12PR + 1)
+ //   CCU60_T12PR.U  = 24414 -1; // PM interrupt freq. = f T12 / (T12PR + 1)
     CCU60_TCTR4.U |= 0x1 << T12STR_BIT_LSB_IDX; //(load T12PR  from shadow register)
 
     CCU60_TCTR2.B.T12SSC = 0x1; // single shot control
@@ -667,5 +675,34 @@ void initMotor(void)  // TOUT105, TOM2_11, TGC 1, CTRL 3
     P10_IOCR0.U |= (0x10 << PC1_BIT_LSB_IDX);
     P02_IOCR0.U |= (0x11 << PC1_BIT_LSB_IDX);
     P02_IOCR4.U |= (0x10 << PC7_BIT_LSB_IDX);
+}
+
+void activateBuzzer(int duty)
+{
+    GTM_TOM0_CH11_SR0.B.SR0 = 6250000 / duty;
+    GTM_TOM0_CH11_SR1.B.SR1 = 3125000 / duty;
+}
+
+void deactivateBuzzer(void)
+{
+    GTM_TOM0_CH11_SR0.B.SR0 = 0;
+    GTM_TOM0_CH11_SR1.B.SR1 = 0;
+}
+
+void GoMelody()
+{
+    const int interval = 20000000;
+    const int size_Melody = sizeof(Melody) / sizeof(int);
+    if(SongCount >= size_Melody)
+        SongCount = 0;
+
+    activateBuzzer(Doremi[Melody[SongCount++]]);
+    for(int i = 0; i < interval; ++i);
+    if(SongCount == 7 || SongCount == 12 || SongCount == 19)
+        for(int i = 0; i < interval; ++i);
+
+    if(SongCount == size_Melody)
+        for(int i = 0; i < interval*2; ++i);
+    deactivateBuzzer();
 }
 
