@@ -183,9 +183,16 @@ void RunMotor(int Direction)
     adcResult = VADC_readResult();
     duty = 12500*adcResult/4096;
 
-    P02_OUT.U |= P1_BIT_LSB_IDX;
-    P02_OUT.U &= ~(0x1 << P7_BIT_LSB_IDX); // ëª¨í„° ë™ìž‘..
+    P02_OUT.U |= 0x1 << P1_BIT_LSB_IDX;
+    if(Direction)
+    {
+        P10_OUT.U |= 0x1 << P1_BIT_LSB_IDX; // ½Ã°è¹æÇâ ¸ðÅÍ È¸Àü
 
+    }
+    else
+    {
+        P10_OUT.U &= ~(0x1 << P1_BIT_LSB_IDX);  // ¹Ý½Ã°è ¸ðÅÍ È¸Àü
+    }
 
     GTM_TOM0_CH9_SR1.U = duty;
 }
@@ -205,58 +212,39 @@ int core0_main(void)
     IfxCpu_waitEvent(&g_cpuSyncEvent, 1);
     //-----------------------------------------------------------------------------------------
 
-    initGTM();
-    initMotor();
-
     initLED();
     initButton();
 
-    //initRGBLED();
+    initMotor();
+    initGTM();
+
+
+
+    initRGBLED();
     initVADC();
 
-    //initBuzzer();
+    initBuzzer();
 
-    //initUSonic();
+    initUSonic();
 
 
-    //initCCU60();
-    //initCCU61();
-    //initERU();
+    initCCU60();
+    initCCU61();
+    initERU();
     // trigger update request signal
     GTM_TOM0_TGC0_GLB_CTRL.U |= 0x1 << HOST_TRIG_BIT_LSB_IDX;
     GTM_TOM0_TGC1_GLB_CTRL.U |= 0x1 << HOST_TRIG_BIT_LSB_IDX;
 
     unsigned int pitch[8] = {250, 500, 1000, 1500, 195, 220, 246, 262};
 
-
-    //trigger update request signal
-    //GTM_TOM0_TGC0_GLB_CTRL.U |= 0x1 << HOST_TRIG_BIT_LSB_IDX;
-
-    //unsigned int adcResult;
-
     while(1)
     {
-        //for(unsigned int i=0; i < 10000000; i++);
-        // STOP ìƒíƒœì—ì„œë§Œ RUNìœ¼ë¡œ ê°ˆ ìˆ˜ ìžˆë‹¤.
-
-        if((P02_IN.U & (0x1 << P0_BIT_LSB_IDX)) == 0) // check button status
-        {
-            P10_OUT.U |= 0x1 << P2_BIT_LSB_IDX; // set P10.1 (LED D13 RED) -> switch ON
-            P10_OUT.U |= 0x1 << P1_BIT_LSB_IDX; // ì‹œê³„ë°©í–¥ ëª¨í„° íšŒì „
-        }
-        else
-        {
-            P10_OUT.U &= ~(0x1 << P2_BIT_LSB_IDX); // toggle P1012 (LED D13 BLUE)
-            P10_OUT.U &= ~(0x1 << P1_BIT_LSB_IDX); // ì‹œê³„ë°©í–¥ ëª¨í„° íšŒì „
-        }
-        RunMotor(0);
-        continue;
         if(MotorStatus == MOTOR_STOP)
         {
             if((P02_IN.U & (0x1 << P0_BIT_LSB_IDX)) == 0) // check button status
             {
                 MotorStatus = MOTOR_RUN;
-                //P10_OUT.U |= 0x1<<P2_BIT_LSB_IDX;   // íŒŒëž€ìƒ‰ LED ë°œê´‘
+                P10_OUT.U |= 0x1<<P2_BIT_LSB_IDX;   // ÆÄ¶õ»ö LED ¹ß±¤
                 MotorDirection ^= 1;
                 RunMotor(MotorDirection);
             }
@@ -267,10 +255,8 @@ int core0_main(void)
             if(count >= 100)
             {
                 MotorStatus = MOTOR_STOP;
-                //P10_OUT.U &= ~(0x1 << P2_BIT_LSB_IDX); // íŒŒëž€ìƒ‰ LED ë„ê¸°
-                //P02_OUT.U |= (0x01) << P7_BIT_LSB_IDX; // ëª¨í„° Off + Red On
-
-                //P02_OUT.U &= ~(0x1 << P7_BIT_LSB_IDX); // ëª¨í„° ë™ìž‘..
+                P10_OUT.U &= ~(0x1 << P2_BIT_LSB_IDX); // ÆÄ¶õ»ö LED ²ô±â
+                GTM_TOM0_CH9_SR1.U = 0;
                 count = 0;
             }
         }
@@ -281,43 +267,39 @@ int core0_main(void)
 
         if(range >= 80)
         {
-            //P02_OUT.U |= (0x01) << P7_BIT_LSB_IDX; // Red On
             P10_OUT.U &= ~(0x1 << P5_BIT_LSB_IDX); // Green
             P10_OUT.U &= ~(0x1 << P3_BIT_LSB_IDX); // Blue
 
-           //GTM_TOM0_CH11_SR0.B.SR0 = 0;//6250000 / pitch[0];
-           //GTM_TOM0_CH11_SR1.B.SR1 = 0;//3125000 / pitch[0];
+           GTM_TOM0_CH11_SR0.B.SR0 = 0;//6250000 / pitch[0];
+           GTM_TOM0_CH11_SR1.B.SR1 = 0;//3125000 / pitch[0];
 
         }
         else if (range >= 60)
         {
-            //P02_OUT.U &= ~(0x1 << P7_BIT_LSB_IDX); // Red
             P10_OUT.U |= (0x01) << P5_BIT_LSB_IDX; // Green On
             P10_OUT.U &= ~(0x1 << P3_BIT_LSB_IDX); // Blue
 
-            //GTM_TOM0_CH11_SR0.B.SR0 = 6250000 / pitch[1];
-            //GTM_TOM0_CH11_SR1.B.SR1 = 3125000 / pitch[1];
+            GTM_TOM0_CH11_SR0.B.SR0 = 6250000 / pitch[1];
+            GTM_TOM0_CH11_SR1.B.SR1 = 3125000 / pitch[1];
         }
         else if (range >= 20)
         {
-            //P02_OUT.U &= ~(0x1 << P7_BIT_LSB_IDX); // Red
             P10_OUT.U &= ~(0x1 << P5_BIT_LSB_IDX); // Green
             P10_OUT.U |= (0x01) << P3_BIT_LSB_IDX; // Blue On
 
-            //GTM_TOM0_CH11_SR0.B.SR0 = 6250000 / pitch[2];
-            //GTM_TOM0_CH11_SR1.B.SR1 = 3125000 / pitch[2];
+            GTM_TOM0_CH11_SR0.B.SR0 = 6250000 / pitch[2];
+            GTM_TOM0_CH11_SR1.B.SR1 = 3125000 / pitch[2];
         }
         else
         {
-            //P02_OUT.U |= (0x01) << P7_BIT_LSB_IDX; // Red On
             P10_OUT.U |= (0x01) << P5_BIT_LSB_IDX; // Green On
             P10_OUT.U |= (0x01) << P3_BIT_LSB_IDX; // Blue On
 
-           // GTM_TOM0_CH11_SR0.B.SR0 = 6250000 / pitch[3];
-            //GTM_TOM0_CH11_SR1.B.SR1 = 3125000 / pitch[3];
+            GTM_TOM0_CH11_SR0.B.SR0 = 6250000 / pitch[3];
+            GTM_TOM0_CH11_SR1.B.SR1 = 3125000 / pitch[3];
         }
 
-        // STOP ìƒíƒœì—ì„œë§Œ RUNìœ¼ë¡œ ê°ˆ ìˆ˜ ìžˆë‹¤.
+        // STOP »óÅÂ¿¡¼­¸¸ RUNÀ¸·Î °¥ ¼ö ÀÖ´Ù.
 
     }
     return (1);
@@ -330,7 +312,7 @@ void initLED(void)
     P10_IOCR0.U &= ~(0x1F << PC2_BIT_LSB_IDX); // reset P10_IOCR0 PC1
 
     //P10_IOCR0.U |= 0x10 << PC1_BIT_LSB_IDX; // set P10.1 push-pull general output
-    P10_IOCR0.U |= 0x11 << PC1_BIT_LSB_IDX; // set P10.1 GTM output
+    //P10_IOCR0.U |= 0x11 << PC1_BIT_LSB_IDX; // set P10.1 GTM output
     P10_IOCR0.U |= 0x10 << PC2_BIT_LSB_IDX; // set P10.2 push-pull general output
 }
 
@@ -637,11 +619,11 @@ void initUSonic(void){
     P00_IOCR4.U |= (0x01 << PC4_BIT_LSB_IDX); // echo
     P02_IOCR4.U |= (0x10 << PC6_BIT_LSB_IDX); // trigger
 
-    P02_OUT.U &= ~(0x1 << P6_BIT_LSB_IDX); // triggerë§Œ ì´ˆê¸°í™”
+    P02_OUT.U &= ~(0x1 << P6_BIT_LSB_IDX); // trigger¸¸ ÃÊ±âÈ­
 }
 
 
-void usonicTrigger(void){ // trigger pulse ìƒì„±
+void usonicTrigger(void){ // trigger pulse »ý¼º
     P02_OUT.U |= 0x1 << P6_BIT_LSB_IDX;
     range_valid_flag = 0;
     CCU60_TCTR4.U = 0x1 << T12RS_BIT_LSB_IDX;
@@ -686,3 +668,4 @@ void initMotor(void)  // TOUT105, TOM2_11, TGC 1, CTRL 3
     P02_IOCR0.U |= (0x11 << PC1_BIT_LSB_IDX);
     P02_IOCR4.U |= (0x10 << PC7_BIT_LSB_IDX);
 }
+
